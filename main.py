@@ -10,20 +10,42 @@ bot = telebot.TeleBot(API_TOKEN)
 categories = ("еда", "услуги", "игры", "электроника", "обслуживание авто")
 data = {}
 DATA_FILE = "expenses.json"
+CATEGORIES_FILE = "categories.json"
 
-
-def load_data():
-    global data
+def load_(data, is_data=True):
+    if is_data:
+        path = DATA_FILE
+    else:
+        path = CATEGORIES_FILE
     try:
-        with open(DATA_FILE, 'r', encoding='utf-8') as file:
+        with open(path, 'r', encoding='utf-8') as file:
             data = json.load(file)
     except:
         data = {}
+    return data
+
+def load_data(data):
+    return load_(data)
+
+def load_categories(data):
+    return load_(data, is_data=False)
 
 
-def save_data():
-    with open(DATA_FILE, 'w', encoding='utf-8') as file:
+def save_(data, is_data=True):
+    if is_data:
+        path = DATA_FILE
+    else:
+        path = CATEGORIES_FILE
+    with open(path, 'w', encoding='utf-8') as file:
         json.dump(data, file, ensure_ascii=False, indent=2)
+
+
+def save_data(data):
+    return save_(data)
+
+
+def save_categories(data):
+    return save_(data, is_data=False)
 
 
 def clear_all():
@@ -54,12 +76,7 @@ def create_kb(buttons):
 
 def main_kb():
     return create_kb(
-        [types.KeyboardButton('Баланс'), types.KeyboardButton('Категории'), types.KeyboardButton('Очистить все')])
-
-
-def categories_kb():
-    buttons = [types.KeyboardButton(cat) for cat in categories] + [types.KeyboardButton('Назад')]
-    return create_kb(buttons)
+        [types.KeyboardButton('Баланс'), types.KeyboardButton('Категории')])
 
 
 def confirm_kb():
@@ -106,26 +123,9 @@ def handle_message(message):
         if text == 'баланс':
             response = "Расходы еще не добавлены" if not data else "Общий баланс:\n" + "\n".join(
                 [f"• {cat}: {amt:.2f} руб." for cat, amt in data.items()]) + f"\n\nИтого: {sum(data.values()):.2f} руб."
-            bot.reply_to(message, response, reply_markup=main_kb())
+            bot.reply_to(message, response, reply_markup=())
         elif text == 'категории':
-            bot.reply_to(message, "Выберите категорию:", reply_markup=categories_kb())
-        elif text == 'очистить все':
-            total = sum(data.values())
-            if total > 0:
-                clear_states[chat_id] = 'first'
-                bot.reply_to(message, f"Вы уверены? Будет очищено: {total:.2f} руб.", reply_markup=confirm_kb())
-            else:
-                bot.reply_to(message, "Нет данных для очистки.", reply_markup=main_kb())
-        elif text == 'да, очистить все':
-            clear_states[chat_id] = 'second'
-            bot.reply_to(message, "Вы тооооочно уверенны????", reply_markup=final_confirm_kb())
-        elif text == 'точно очистить!':
-            clear_all()
-            clear_states[chat_id] = None
-            bot.reply_to(message, "Все категории очищены!", reply_markup=main_kb())
-        elif text in ['нет, отменить', 'нет, я не буду чистить']:
-            clear_states[chat_id] = None
-            bot.reply_to(message, "Очистка отменена.", reply_markup=main_kb())
+            bot.reply_to(message, "Перечень категорий:\n" + "\n".join(categories), reply_markup=main_kb())
         elif text == 'назад':
             user_states[chat_id] = None
             bot.reply_to(message, "Главное меню:", reply_markup=main_kb())
