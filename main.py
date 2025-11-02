@@ -7,64 +7,60 @@ from telebot import types
 API_TOKEN = '8433567433:AAH9bDuB8tEmiQiZIJfkEN3_qI_RmvhoJEo'
 bot = telebot.TeleBot(API_TOKEN)
 
-categories = ("еда", "услуги", "игры", "электроника", "обслуживание авто")
-data = {}
+default_categories = ["еда", "услуги", "игры", "электроника", "обслуживание авто"]
 DATA_FILE = "expenses.json"
-CATEGORIES_FILE = "categories.json"
+users_data = {}
 
-def load_(data, is_data=True):
-    if is_data:
-        path = DATA_FILE
-    else:
-        path = CATEGORIES_FILE
+
+def load_data():
+    global users_data
     try:
-        with open(path, 'r', encoding='utf-8') as file:
-            data = json.load(file)
+        with open(DATA_FILE, 'r', encoding='utf-8') as file:
+            users_data = json.load(file)
     except:
-        data = {}
-    return data
-
-def load_data(data):
-    return load_(data)
-
-def load_categories(data):
-    return load_(data, is_data=False)
+        users_data = {}
 
 
-def save_(data, is_data=True):
-    if is_data:
-        path = DATA_FILE
-    else:
-        path = CATEGORIES_FILE
-    with open(path, 'w', encoding='utf-8') as file:
-        json.dump(data, file, ensure_ascii=False, indent=2)
+def save_data():
+    with open(DATA_FILE, 'w', encoding='utf-8') as file:
+        json.dump(users_data, file, ensure_ascii=False, indent=2)
 
 
-def save_data(data):
-    return save_(data)
+def get_user_data(user_id):
+    if user_id not in users_data:
+        users_data[user_id] = {
+            'categories': default_categories.copy(),
+            'expenses': {}
+        }
+        save_data()
+    return users_data[user_id]
 
 
-def save_categories(data):
-    return save_(data, is_data=False)
-
-
-def clear_all():
-    for category in data: data[category] = 0
+def clear_all(user_id):
+    user_data = get_user_data(user_id)
+    for category in user_data['expenses']:
+        user_data['expenses'][category] = 0
     save_data()
 
+def add_category(user_id, new_category):
+    user_data = get_user_data(user_id)
+    if new_category not in user_data["expenses"]:
+        user_data["expenses"].append(new_category)
+    save_data()
 
-def add_expense(text):
+def add_expense(user_id, text):
+    user_data = get_user_data(user_id)
     parts = text.split()
     if len(parts) < 2: return
     amount_str, category = parts[-1], " ".join(parts[:-1]).lower()
 
     if not all(c in "0123456789." for c in amount_str) or amount_str == ".": return
     amount = float(amount_str)
-    if amount == 0 or category not in categories: return
+    if amount == 0: return
 
-    data[category] = data.get(category, 0) + amount
+    user_data['expenses'][category] = user_data['expenses'].get(category, 0) + amount
     save_data()
-    return amount, category, data[category]
+    return amount, category, user_data['expenses'][category]
 
 
 def create_kb(buttons):
@@ -75,16 +71,14 @@ def create_kb(buttons):
 
 
 def main_kb():
-    return create_kb(
-        [types.KeyboardButton('Баланс'), types.KeyboardButton('Категории')])
+    return create_kb([
+        types.KeyboardButton('/Баланс'),
+        types.KeyboardButton("/Категории",),
+    ])
 
-
-def confirm_kb():
-    return create_kb([types.KeyboardButton('Да, очистить все'), types.KeyboardButton('Нет, отменить')])
-
-
-def final_confirm_kb():
-    return create_kb([types.KeyboardButton('Точно очистить!'), types.KeyboardButton('Нет, я не буду чистить')])
+def get_categories(user_id: int) ->list[str]:
+    user_data = get_user_data(user_id)
+    return users_data["expenses"]
 
 
 user_states = {}
@@ -95,51 +89,45 @@ load_data()
 
 @bot.message_handler(commands=['start'])
 def start(message):
-    user_states[message.chat.id] = None
+    user_id = str(message.from.id)
+    user_states[user_id] = None
     bot.send_message(message.chat.id, "Бот для учета расходов", reply_markup=main_kb())
 
-
 @bot.message_handler(commands=['clear'])
-def clear_cmd(message):
-    clear_all()
+def clear(message):
+    user_id = str(message.from.id)
+    clear_all(user_id)
     bot.reply_to(message, "Все категории очищены!", reply_markup=main_kb())
+
+@bot.message_handler(commands=['add',"добавить","Add","Добавить"])
+def add_user_category(message):
+    user_id = str(message.chat.from.id)
+    start = message.text.rstript().find(" ")
+    if start != -1:
+        new_category = message.text[start + 1:]
+        add_category(user_id, new_category)
+        bot.reply_to(message, f"Новая категория: {new_category} добавлена", reply_markup=main_kb())
+
+
+@bot.message_handler(commands=["categories", "категории", "Categories", "Категории"])
+def categories(message):
+    user_id = str(message.chat.user.id)
+    categories = get_categories(user_id)
+    text = "\n".join(categories)
+    bot.reply_to(message, "Все категории:\n" + text, reply_markup=main_kb())
 
 
 @bot.message_handler(content_types=['text'])
 def handle_message(message):
     try:
-        text, chat_id = message.text.strip().lower(), message.chat.id
-
-        if user_states.get(chat_id):
-            amount = float(text)
-            category = user_states[chat_id]
-            data[category] = data.get(category, 0) + amount
-            save_data()
-            user_states[chat_id] = None
-            bot.reply_to(message, f"Добавлено {amount} руб. в {category}\nВсего: {data[category]:.2f} руб.",
+        text, user_id = message.text.strip().lower(), str(message.from.user.id)
+        result = add_expense(user_id, text)
+        if result:
+            amount, category, total = result
+            bot.reply_to(message, f"Добавлено {amount} руб. в {category}\nВсего: {total:.2f} руб.",
                          reply_markup=main_kb())
-            return
-
-        if text == 'баланс':
-            response = "Расходы еще не добавлены" if not data else "Общий баланс:\n" + "\n".join(
-                [f"• {cat}: {amt:.2f} руб." for cat, amt in data.items()]) + f"\n\nИтого: {sum(data.values()):.2f} руб."
-            bot.reply_to(message, response, reply_markup=())
-        elif text == 'категории':
-            bot.reply_to(message, "Перечень категорий:\n" + "\n".join(categories), reply_markup=main_kb())
-        elif text == 'назад':
-            user_states[chat_id] = None
-            bot.reply_to(message, "Главное меню:", reply_markup=main_kb())
-        elif text in categories:
-            user_states[chat_id] = text
-            bot.reply_to(message, f"Категория: {text}\nВведите сумму:")
         else:
-            result = add_expense(text)
-            if result:
-                amount, category, total = result
-                bot.reply_to(message, f"Добавлено {amount} руб. в {category}\nВсего: {total:.2f} руб.",
-                             reply_markup=main_kb())
-            else:
-                bot.reply_to(message, "Не могу найти сумму", reply_markup=main_kb())
+            bot.reply_to(message, "Не могу найти сумму", reply_markup=main_kb())
 
     except Exception as e:
         bot.reply_to(message, f"Ошибка: {str(e)}", reply_markup=main_kb())
