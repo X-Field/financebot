@@ -1,5 +1,13 @@
 import json
-from config import DATA_FILE, DEFAULT_CATEGORIES
+import os
+
+# Определяем константы здесь, если импорт не работает
+try:
+    from config import DATA_FILE, DEFAULT_CATEGORIES
+except ImportError:
+    # Fallback значения если config не импортируется
+    DATA_FILE = "expenses.json"
+    DEFAULT_CATEGORIES = ["еда", "услуги", "игры", "электроника", "обслуживание авто"]
 
 users_data = {}
 
@@ -85,3 +93,9 @@ def get_balance(user_id):
 
     balance_text += f"\nВсего: {total:.2f} руб."
     return balance_text
+
+
+# Защита от прямого запуска
+if __name__ == "__main__":
+    print("Это модуль utils, не предназначен для прямого запуска!")
+    print("Запустите bot.py вместо этого.")

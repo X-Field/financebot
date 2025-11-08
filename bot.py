@@ -1,12 +1,29 @@
 import telebot
 from telebot import types
-from config import API_TOKEN
-from utils import (
-    load_data, save_data, get_user_data, clear_all,
-    add_category, get_categories, add_expense, get_balance
-)
 
-bot = telebot.TeleBot(API_TOKEN)
+try:
+    from config import API_TOKEN, DATA_FILE, DEFAULT_CATEGORIES
+    from utils import (
+        load_data, save_data, get_user_data, clear_all,
+        add_category, get_categories, add_expense, get_balance
+    )
+except ImportError as e:
+    print(f"❌ Ошибка импорта: {e}")
+    print("Убедитесь что все файлы в одной папке:")
+    print("- config.py")
+    print("- utils.py")
+    print("- bot.py")
+    print("- .env")
+    exit(1)
+
+# Инициализируем бота
+try:
+    bot = telebot.TeleBot(API_TOKEN)
+    print("✅ Бот инициализирован успешно!")
+except Exception as e:
+    print(f"❌ Ошибка инициализации бота: {e}")
+    exit(1)
+
 user_states = {}
 
 
@@ -21,9 +38,28 @@ def main_kb():
     return create_kb([
         types.KeyboardButton('Баланс'),
         types.KeyboardButton('Категории'),
-        types.KeyboardButton('Добавить категорию'),
-        types.KeyboardButton('Очистить все')
+        types.KeyboardButton('Добавить категорию')
     ])
+
+
+def get_help_text():
+    return (
+        "💰 *Бот для учета расходов*\n\n"
+        "📝 *Как добавлять расходы:*\n"
+        "Просто напишите: *категория сумма*\n"
+        "Например: `еда 500` или `транспорт 150`\n\n"
+        "⌨️ *Команды:*\n"
+        "*/start* - начать работу\n"
+        "*/help* - эта справка\n"
+        "*/balance* - показать баланс\n"
+        "*/categories* - показать категории\n"
+        "*/clear* - очистить все расходы\n\n"
+        "🔘 *Кнопки:*\n"
+        "• *Баланс* - ваши расходы по категориям\n"
+        "• *Категории* - список всех категорий\n"
+        "• *Добавить категорию* - создать новую категорию\n\n"
+        "💡 *Совет:* Используйте кнопки для быстрого доступа к функциям!"
+    )
 
 
 @bot.message_handler(commands=['start'])
@@ -32,17 +68,24 @@ def start(message):
     user_states[user_id] = None
     bot.send_message(
         message.chat.id,
-        "💰 Бот для учета расходов\n\n"
-        "Как использовать:\n"
-        "• Для добавления расхода напишите: 'категория сумма'\n"
-        "• Например: 'еда 500' или 'транспорт 150'\n\n"
-        "Используйте кнопки для управления:",
+        get_help_text(),
+        parse_mode='Markdown',
         reply_markup=main_kb()
     )
 
 
-@bot.message_handler(func=lambda message: message.text == 'Очистить все')
-def clear_handler(message):
+@bot.message_handler(commands=['help'])
+def help_command(message):
+    bot.reply_to(
+        message,
+        get_help_text(),
+        parse_mode='Markdown',
+        reply_markup=main_kb()
+    )
+
+
+@bot.message_handler(commands=['clear'])
+def clear_command(message):
     user_id = str(message.from_user.id)
     clear_all(user_id)
     bot.reply_to(message, "✅ Все расходы очищены!", reply_markup=main_kb())
@@ -73,6 +116,24 @@ def balance_handler(message):
     bot.reply_to(message, balance_text, reply_markup=main_kb())
 
 
+@bot.message_handler(commands=['balance'])
+def balance_command(message):
+    user_id = str(message.from_user.id)
+    balance_text = get_balance(user_id)
+    bot.reply_to(message, balance_text, reply_markup=main_kb())
+
+
+@bot.message_handler(commands=['categories'])
+def categories_command(message):
+    user_id = str(message.from_user.id)
+    categories = get_categories(user_id)
+    if categories:
+        text = "📂 Ваши категории:\n• " + "\n• ".join(categories)
+    else:
+        text = "📂 У вас пока нет категорий"
+    bot.reply_to(message, text, reply_markup=main_kb())
+
+
 @bot.message_handler(content_types=['text'])
 def handle_message(message):
     user_id = str(message.from_user.id)
@@ -101,15 +162,19 @@ def handle_message(message):
             reply_markup=main_kb()
         )
     else:
-        bot.reply_to(
-            message,
-            "❌ Неверный формат. Используйте: 'категория сумма'\n"
-            "Например: 'еда 500' или 'транспорт 150'",
-            reply_markup=main_kb()
-        )
+        # Игнорируем сообщения, которые не являются командами добавления расходов
+        if not text.startswith('/'):
+            bot.reply_to(
+                message,
+                "❌ Неверный формат. Используйте: 'категория сумма'\n"
+                "Например: 'еда 500' или 'транспорт 150'\n\n"
+                "Напишите /help для справки",
+                reply_markup=main_kb()
+            )
 
 
 if __name__ == "__main__":
+    print("Загрузка данных...")
     load_data()
-    print("Бот запущен...")
+    print("Запуск бота...")
     bot.infinity_polling()
