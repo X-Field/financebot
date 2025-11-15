@@ -1,63 +1,54 @@
 import json
-import os
 
-# Определяем константы здесь, если импорт не работает
-try:
-    from config import DATA_FILE, DEFAULT_CATEGORIES
-except ImportError:
-    # Fallback значения если config не импортируется
-    DATA_FILE = "expenses.json"
-    DEFAULT_CATEGORIES = ["еда", "услуги", "игры", "электроника", "обслуживание авто"]
-
-users_data = {}
+from config import DATA_FILE, DEFAULT_CATEGORIES
 
 
 def load_data():
-    global users_data
     try:
-        with open(DATA_FILE, 'r', encoding='utf-8') as file:
+        with open(DATA_FILE, 'r') as file:
             users_data = json.load(file)
+        return users_data
     except (FileNotFoundError, json.JSONDecodeError):
         users_data = {}
 
 
-def save_data():
+def save_data(data):
     with open(DATA_FILE, 'w', encoding='utf-8') as file:
-        json.dump(users_data, file, ensure_ascii=False, indent=2)
+        json.dump(data, file, ensure_ascii=False, indent=2)
 
 
-def get_user_data(user_id):
-    if user_id not in users_data:
-        users_data[user_id] = {
-            'categories': DEFAULT_CATEGORIES.copy(),
+def get_user_data(user_id, data):
+    if user_id not in data:
+        data[user_id] = {
+            'categories': list(DEFAULT_CATEGORIES),
             'expenses': {}
         }
-        save_data()
-    return users_data[user_id]
+        save_data(data)
+    return data[user_id]
 
 
-def clear_all(user_id):
-    user_data = get_user_data(user_id)
+def clear_all(user_id, data):
+    user_data = get_user_data(user_id, data)
     user_data['expenses'] = {}
-    save_data()
+    save_data(user_data)
 
 
-def add_category(user_id, new_category):
-    user_data = get_user_data(user_id)
+def add_category(user_id, new_category, data):
+    user_data = get_user_data(user_id, data)
     if new_category not in user_data['categories']:
         user_data['categories'].append(new_category)
-        save_data()
+        save_data(user_data)
         return True
     return False
 
 
-def get_categories(user_id):
-    user_data = get_user_data(user_id)
+def get_categories(user_id, data):
+    user_data = get_user_data(user_id, data)
     return user_data['categories']
 
 
-def add_expense(user_id, text):
-    user_data = get_user_data(user_id)
+def add_expense(user_id, text, data):
+    user_data = get_user_data(user_id, data)
     parts = text.split()
     if len(parts) < 2:
         return None
@@ -76,12 +67,12 @@ def add_expense(user_id, text):
         return None
 
     user_data['expenses'][category] = user_data['expenses'].get(category, 0) + amount
-    save_data()
+    save_data(user_data)
     return amount, category, user_data['expenses'][category]
 
 
-def get_balance(user_id):
-    user_data = get_user_data(user_id)
+def get_balance(user_id, data):
+    user_data = get_user_data(user_id, data)
     if not user_data['expenses']:
         return "Нет расходов"
 
@@ -98,4 +89,4 @@ def get_balance(user_id):
 # Защита от прямого запуска
 if __name__ == "__main__":
     print("Это модуль utils, не предназначен для прямого запуска!")
-    print("Запустите bot.py вместо этого.")
+    print("Запустите main.py вместо этого.")
